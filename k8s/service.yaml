@@ -1,0 +1,19 @@
+# DRAFT: create in the same namespace as the Deployment.
+# ClusterIP provides internal access only; local host access needs a later,
+# separately arranged connection (for example, port forwarding).
+# Routes both /health and /predict; the API teammate implements those endpoints.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-inference
+  labels:
+    app: ml-inference
+spec:
+  type: ClusterIP
+  selector:
+    app: ml-inference
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP

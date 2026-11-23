@@ -1,0 +1,79 @@
+# DRAFT: review with teammates before deploying to minikube.
+# API teammate: serve HTTP on 0.0.0.0:8000 with GET /health and POST /predict.
+# /health must be quick, unauthenticated, and return 200 only once inference
+# is ready. It must also be suitable for detecting a stuck application.
+# Image teammate: provide a tested image with a numeric, non-zero USER and
+# permissions to read the model and write any required application files.
+# Model/runtime dependencies must be supplied by that image; none are added here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-inference
+  labels:
+    app: ml-inference
+spec:
+  replicas: 2
+  # Keep previous Pod templates for later rollback; use versioned images.
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1 # minikube needs room for a third Pod during rollout.
+  selector:
+    matchLabels:
+      app: ml-inference
+  template:
+    metadata:
+      labels:
+        app: ml-inference
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: api
+          # PLACEHOLDER ONLY: intentionally unusable; no final GHCR image assumed.
+          # Replace with a tested version tag or digest accessible to minikube.
+          image: example.invalid/ai381-inference:replace-me
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          # Starting estimates per Pod; model teammate must confirm by measuring
+          # model loading and inference. Memory above the limit can cause a kill.
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          # Allow about 150 seconds for startup before restarting the container.
+          # Readiness and liveness checks wait until startup succeeds.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 30
+          # Remove an unready Pod from Service traffic without restarting it.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          # Restart an unhealthy container after repeated failed checks.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
